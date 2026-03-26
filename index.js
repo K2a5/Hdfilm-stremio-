@@ -23,6 +23,7 @@ app.get('/manifest.json', (req, res) => {
     res.json(manifest);
 });
 
+// 1. Kısım: Katalog (Filmleri listelediğimiz yer)
 app.get('/catalog/:type/:id.json', async (req, res) => {
     try {
         const type = req.params.type;
@@ -50,12 +51,84 @@ app.get('/catalog/:type/:id.json', async (req, res) => {
     }
 });
 
+// 2. Kısım: Bizim eklediğimiz META (Afiş ve Detay) kısmı
+app.get('/meta/:type/:id.json', async (req, res) => {
+    try {
+        const type = req.params.type;
+        const fullId = req.params.id; 
+        const base64Url = fullId.replace('hdfilm:', '');
+        const url = Buffer.from(base64Url, 'base64').toString('utf-8');
+
+        console.log(`[META] Şuraya dalıyoruz: ${url}`);
+
+        const response = await fetch(url);
+        const html = await response.text();
+        const $ = cheerio.load(html);
+
+        const title = $('h1').first().text().trim() || $('meta[property="og:title"]').attr('content') || 'İsimsiz Film';
+        const poster = $('meta[property="og:image"]').attr('content') || $('.poster img').attr('src');
+        const description = $('.ozet').text().trim() || $('meta[name="description"]').attr('content') || 'Bu film için özet bulunamadı usta.';
+        const background = poster; 
+
+        const metaObj = {
+            id: fullId,
+            type: type,
+            name: title,
+            poster: poster,
+            background: background,
+            description: description
+        };
+
+        res.json({ meta: metaObj });
+    } catch (e) {
+        console.error("[META] Hata patladı usta:", e);
+        res.json({ meta: { id: req.params.id, type: req.params.type, name: "Hata Oluştu" } });
+    }
+});
+
+// 3. Kısım: Bizim eklediğimiz STREAM (Oynatıcı) kısmı
 app.get('/stream/:type/:id.json', async (req, res) => {
-    res.json({ streams: [] });
+    try {
+        const fullId = req.params.id; 
+        const base64Url = fullId.replace('hdfilm:', '');
+        const url = Buffer.from(base64Url, 'base64').toString('utf-8');
+
+        console.log(`[STREAM] Operasyon başladı, mekana dalıyoruz: ${url}`);
+
+        const response = await fetch(url);
+        const html = await response.text();
+        const $ = cheerio.load(html);
+
+        let videoUrl = '';
+        const iframeSrc = $('iframe').first().attr('src');
+
+        if (iframeSrc) {
+            videoUrl = iframeSrc.startsWith('http') ? iframeSrc : `https:${iframeSrc}`;
+            console.log(`[STREAM] İframe yakalandı: ${videoUrl}`);
+        }
+
+        if (videoUrl) {
+            res.json({
+                streams: [
+                    {
+                        title: "HD Film Cehennemi",
+                        url: videoUrl 
+                    }
+                ]
+            });
+        } else {
+            console.log("[STREAM] Linki bulamadık usta, sayfa boş çıktı.");
+            res.json({ streams: [] });
+        }
+
+    } catch (e) {
+        console.error("[STREAM] Motor su kaynattı usta:", e);
+        res.json({ streams: [] });
+    }
 });
 
 app.get('/', (req, res) => {
-    res.send('HD Film Cehennemi Stremio Addon çalışıyor!');
+    res.send('HD Film Cehennemi Stremio Addon çalışıyor usta!');
 });
 
 const PORT = process.env.PORT || 3000;
